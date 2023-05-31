@@ -16,8 +16,8 @@ The code is stable while using Python 3.8.11, CUDA >=11.3
 
 - Clone this repository:
 ```bash
-git clone https://github.com/jeya-maria-jose/TransWeather
-cd TransWeather
+git clone (https://github.com/converT98/RGTN.git)
+cd RGTN
 ```
 
 To install all the dependencies using conda:
