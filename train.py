@@ -1,6 +1,6 @@
 import os
 os.environ['CUDA_VISIBLE_DEVICES']='1'
-from tool.models.archs.restormer_mask.res_mask_de_detach import RestormerUfor_mask
+from tool.models.archs.RGTN.RGTN import RGTN
 from tool.models.losses.losses import PSNRLoss,CharbonnierLoss
 from tool.models import lr_scheduler as lr_scheduler
 import torch
@@ -21,7 +21,7 @@ train_loader, train_sampler, val_loader, total_epochs, total_iters = result
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 cuda_count=torch.cuda.device_count()
 
-net = RestormerUfor_mask(win_size=8).to(device)
+net = RGTN(win_size=8).to(device)
 #3net.load_state_dict(torch.load(opt['path']['pretrain_network_g'], map_location='cuda')['state_dict_net'])
 
 train_opt = opt['train']
