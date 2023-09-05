@@ -1,6 +1,3 @@
-## restormer_U_base version1,window_size default 32
-## https://arxiv.org/abs/2111.09881
-
 from einops import rearrange, repeat
 from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 import torch
@@ -37,7 +34,6 @@ class gateConv(nn.Module):
     def forward(self, x):
         return self.main(x)
 ##########################################################################
-## Layer Norm
 
 def to_3d(x):
     return rearrange(x, 'b c h w -> b (h w) c')
@@ -93,8 +89,6 @@ class LayerNorm(nn.Module):
         return to_4d(self.body(to_3d(x)), h, w)
 
 
-
-##########################################################################
 ## Gated-Dconv Feed-Forward Network (GDFN)
 class FeedForward(nn.Module):
     def __init__(self, dim, ffn_expansion_factor, bias):
@@ -117,9 +111,7 @@ class FeedForward(nn.Module):
 
 
 ##########################################################################
-## Multi-DConv Head Transposed Self-Attention (MDTA)
 
-######## Embedding for q,k,v ########
 class ConvProjection(nn.Module):
     def __init__(self, dim, heads = 8, dim_head = 64, kernel_size=3, q_stride=1, k_stride=1, v_stride=1, dropout = 0.,
                  last_stage=False,bias=True):
@@ -141,7 +133,7 @@ class ConvProjection(nn.Module):
         attn_kv = x if attn_kv is None else attn_kv
         x = rearrange(x, 'b (l w) c -> b c l w', l=l, w=w)
         attn_kv = rearrange(attn_kv, 'b (l w) c -> b c l w', l=l, w=w)
-        # print(attn_kv)
+
         q = self.to_q(x)
         q = rearrange(q, 'b (h d) l w -> b h (l w) d', h=h)
         
@@ -244,11 +236,9 @@ class WindowAttention(nn.Module):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        # define a parameter table of relative position bias
         self.relative_position_bias_table = nn.Parameter(
             torch.zeros((2 * win_size[0] - 1) * (2 * win_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
 
-        # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.win_size[0]) # [0,...,Wh-1]
         coords_w = torch.arange(self.win_size[1]) # [0,...,Ww-1]
         coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
@@ -303,22 +293,15 @@ class WindowAttention(nn.Module):
         return f'dim={self.dim}, win_size={self.win_size}, num_heads={self.num_heads}'
 
     def flops(self, H, W):
-        # calculate flops for 1 window with token length of N
-        # print(N, self.dim)
         flops = 0
         N = self.win_size[0]*self.win_size[1]
         nW = H*W/N
-        # qkv = self.qkv(x)
-        # flops += N * self.dim * 3 * self.dim
         flops += self.qkv.flops(H*W, H*W)
-        
-        # attn = (q @ k.transpose(-2, -1))
 
         flops += nW * self.num_heads * N * (self.dim // self.num_heads) * N
-        #  x = (attn @ v)
+
         flops += nW * self.num_heads * N * N * (self.dim // self.num_heads)
         
-        # x = self.proj(x)
         flops += nW * N * self.dim * self.dim
         print("W-MSA:{%.2f}"%(flops/1e9))
         return flops
@@ -327,7 +310,6 @@ class Attention_win(nn.Module):
         super(Attention_win, self).__init__()
         self.win_size=win_size
         self.num_heads = num_heads
-        #self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
         self.attn = WindowAttention(
             dim, win_size=(self.win_size,self.win_size), num_heads=num_heads,
             qkv_bias=qkv_bias,  
@@ -344,7 +326,6 @@ class Attention_win(nn.Module):
         short_cut=x
         x =self.qkv(x)
         x=self.input_resize(x) #b, h, w, c
-         #B H W C   .contiguous()
         x_windows = window_partition(x, self.win_size) #B' ,Wh ,Ww ,C
         x_windows = x_windows.view(-1, self.win_size * self.win_size, c) # nW*B, win_size, win_size, C  N*C->C
         wmsa_in = self.with_pos_embed(x_windows,self.modulator.weight)
@@ -375,7 +356,6 @@ class TransformerBlock(nn.Module):
         return x
 
 ##########################################################################
-## Overlapped image patch embedding with 3x3 Conv
 class OverlapPatchEmbed(nn.Module):
     def __init__(self, in_c=3, embed_dim=48, bias=False):
         super(OverlapPatchEmbed, self).__init__()
@@ -387,7 +367,6 @@ class OverlapPatchEmbed(nn.Module):
         return x
 
 ##########################################################################
-## Resizing modules
 class Downsample(nn.Module):
     def __init__(self, n_feat):
         super(Downsample, self).__init__()
@@ -422,8 +401,8 @@ class RestormerUfor_mask(nn.Module):
         heads = [1,2,4,8],
         ffn_expansion_factor = 2.66,
         bias = False,
-        LayerNorm_type = 'WithBias',   ## Other option 'BiasFree'
-        dual_pixel_task = False        ## True for dual-pixel defocus deblurring only. Also set inp_channels=6
+        LayerNorm_type = 'WithBias',   
+        dual_pixel_task = False       
     ):
 
         super(RestormerUfor_mask, self).__init__()
@@ -432,35 +411,32 @@ class RestormerUfor_mask(nn.Module):
 
         self.encoder_level1 = nn.Sequential(*[TransformerBlock(dim=dim, num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[0])])
         
-        self.down1_2 = Downsample(dim) ## From Level 1 to Level 2
+        self.down1_2 = Downsample(dim)
         self.encoder_level2 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**1), num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[1])])
         
-        self.down2_3 = Downsample(int(dim*2**1)) ## From Level 2 to Level 3
+        self.down2_3 = Downsample(int(dim*2**1))
         self.encoder_level3 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**2), num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[2])])
 
-        self.down3_4 = Downsample(int(dim*2**2)) ## From Level 3 to Level 4
+        self.down3_4 = Downsample(int(dim*2**2))
         self.latent = nn.Sequential(*[TransformerBlock(dim=int(dim*2**3), num_heads=heads[3], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[3])])
         
-        self.up4_3 = Upsample(int(dim*2**3)) ## From Level 4 to Level 3
+        self.up4_3 = Upsample(int(dim*2**3)) 
         self.reduce_chan_level3 = nn.Conv2d(int(dim*2**3), int(dim*2**2), kernel_size=1, bias=bias)
         self.decoder_level3 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**2), num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[2])])
 
-        self.up3_2 = Upsample(int(dim*2**2)) ## From Level 3 to Level 2
+        self.up3_2 = Upsample(int(dim*2**2))
         self.reduce_chan_level2 = nn.Conv2d(int(dim*2**2), int(dim*2**1), kernel_size=1, bias=bias)
         self.decoder_level2 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**1), num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[1])])
         
-        self.up2_1 = Upsample(int(dim*2**1))  ## From Level 2 to Level 1  (NO 1x1 conv to reduce channels)
+        self.up2_1 = Upsample(int(dim*2**1))  
 
         self.decoder_level1 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**1), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[0])])
         
         self.refinement = nn.Sequential(*[TransformerBlock(dim=int(dim*2**1), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_refinement_blocks)])
         
-        #### For Dual-Pixel Defocus Deblurring Task ####
         self.dual_pixel_task = dual_pixel_task
         if self.dual_pixel_task:
             self.skip_conv = nn.Conv2d(dim, int(dim*2**1), kernel_size=1, bias=bias)
-        ###########################
-        #self.gate_extract = gateConv(dim, 4, kernel_size=3, relu=False, stride=1, norm=False)
 
         self.output = nn.Conv2d(int(dim*2**1), out_channels, kernel_size=3, stride=1, padding=1, bias=bias)
 
@@ -494,15 +470,10 @@ class RestormerUfor_mask(nn.Module):
         
         out_dec_level1 = self.refinement(out_dec_level1)
 
-        #out_mask=self.gate_extract(out_dec_level1)
-        #gate_x = F.sigmoid(out_mask[:, :1])
-        #gate_x = gate_x.clamp_min(0.1)
-
-        #### For Dual-Pixel Defocus Deblurring Task ####
         if self.dual_pixel_task:
             out_dec_level1 = out_dec_level1 + self.skip_conv(inp_enc_level1)
             out_dec_level1 = self.output(out_dec_level1)
-        ###########################
+
         else:
             out_dec_level1 = self.output(out_dec_level1) + inp_img
 
