@@ -388,9 +388,8 @@ class Upsample(nn.Module):
         return self.body(x)
 
 ##########################################################################
-##---------- Restormer -----------------------
 
-class RestormerUfor_mask(nn.Module):
+class BaseModel(nn.Module):
     def __init__(self, 
         inp_channels=3, 
         out_channels=3, 
@@ -405,7 +404,7 @@ class RestormerUfor_mask(nn.Module):
         dual_pixel_task = False       
     ):
 
-        super(RestormerUfor_mask, self).__init__()
+        super(BaseModel, self).__init__()
 
         self.patch_embed = OverlapPatchEmbed(inp_channels, dim)
 
