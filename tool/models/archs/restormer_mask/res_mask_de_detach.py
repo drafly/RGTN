@@ -443,7 +443,7 @@ class Upsample(nn.Module):
 
 ##########################################################################
 
-class RestormerUfor_mask(nn.Module):
+class RGTN(nn.Module):
     def __init__(self, 
         win_size=32,
         inp_channels=3, 
@@ -458,7 +458,7 @@ class RestormerUfor_mask(nn.Module):
         dual_pixel_task = False        
     ):
 
-        super(RestormerUfor_mask, self).__init__()
+        super(RGTN, self).__init__()
         
         self.patch_embed = OverlapPatchEmbed(inp_channels, dim)
         
