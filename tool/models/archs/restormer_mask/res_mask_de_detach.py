@@ -115,7 +115,6 @@ class FeedForward(nn.Module):
 
 
 ##########################################################################
-## Multi-DConv Head Transposed Self-Attention (MDTA)
 
 ######## Embedding for q,k,v ########
 class ConvProjection(nn.Module):
@@ -139,7 +138,7 @@ class ConvProjection(nn.Module):
         attn_kv = x if attn_kv is None else attn_kv
         x = rearrange(x, 'b (l w) c -> b c l w', l=l, w=w)
         attn_kv = rearrange(attn_kv, 'b (l w) c -> b c l w', l=l, w=w)
-        # print(attn_kv)
+
         q = self.to_q(x)
         q = rearrange(q, 'b (h d) l w -> b h (l w) d', h=h)
         
@@ -212,7 +211,7 @@ class LinearProjection(nn.Module):
         N_kv = attn_kv.size(1)
         if mask is not None:
             q = self.to_q(x)*mask
-            #q=q.masked_fill(mask<0.5,-1e9)
+
             q = q.reshape(B_, N, 1, self.heads, C // self.heads).permute(2, 0, 3, 1, 4)
         else:
             q = self.to_q(x).reshape(B_, N, 1, self.heads, C // self.heads).permute(2, 0, 3, 1, 4)
@@ -236,11 +235,9 @@ class WindowAttention(nn.Module):
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
-        # define a parameter table of relative position bias
         self.relative_position_bias_table = nn.Parameter(
             torch.zeros((2 * win_size[0] - 1) * (2 * win_size[1] - 1), num_heads))  # 2*Wh-1 * 2*Ww-1, nH
 
-        # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.win_size[0]) # [0,...,Wh-1]
         coords_w = torch.arange(self.win_size[1]) # [0,...,Ww-1]
         coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
@@ -296,22 +293,18 @@ class WindowAttention(nn.Module):
         return f'dim={self.dim}, win_size={self.win_size}, num_heads={self.num_heads}'
 
     def flops(self, H, W):
-        # calculate flops for 1 window with token length of N
-        # print(N, self.dim)
+
         flops = 0
         N = self.win_size[0]*self.win_size[1]
         nW = H*W/N
-        # qkv = self.qkv(x)
-        # flops += N * self.dim * 3 * self.dim
         flops += self.qkv.flops(H*W, H*W)
         
-        # attn = (q @ k.transpose(-2, -1))
 
         flops += nW * self.num_heads * N * (self.dim // self.num_heads) * N
-        #  x = (attn @ v)
+
         flops += nW * self.num_heads * N * N * (self.dim // self.num_heads)
         
-        # x = self.proj(x)
+
         flops += nW * N * self.dim * self.dim
         print("W-MSA:{%.2f}"%(flops/1e9))
         return flops
@@ -449,7 +442,6 @@ class Upsample(nn.Module):
         return self.body(x)
 
 ##########################################################################
-##---------- Restormer -----------------------
 
 class RestormerUfor_mask(nn.Module):
     def __init__(self, 
@@ -462,8 +454,8 @@ class RestormerUfor_mask(nn.Module):
         heads = [1,2,4,8],
         ffn_expansion_factor = 2.66,
         bias = False,
-        LayerNorm_type = 'WithBias',   ## Other option 'BiasFree'
-        dual_pixel_task = False        ## True for dual-pixel defocus deblurring only. Also set inp_channels=6
+        LayerNorm_type = 'WithBias', 
+        dual_pixel_task = False        
     ):
 
         super(RestormerUfor_mask, self).__init__()
@@ -472,31 +464,30 @@ class RestormerUfor_mask(nn.Module):
         
         self.encoder_level1 = nn.Sequential(*[TransformerBlock(dim=dim, num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[0])])
         
-        self.down1_2 = Downsample(dim) ## From Level 1 to Level 2
+        self.down1_2 = Downsample(dim) 
         self.encoder_level2 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**1), num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[1])])
         
-        self.down2_3 = Downsample(int(dim*2**1)) ## From Level 2 to Level 3
+        self.down2_3 = Downsample(int(dim*2**1)) 
         self.encoder_level3 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**2), num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[2])])
 
-        self.down3_4 = Downsample(int(dim*2**2)) ## From Level 3 to Level 4
+        self.down3_4 = Downsample(int(dim*2**2)) 
         self.latent = nn.Sequential(*[TransformerBlock(dim=int(dim*2**3), num_heads=heads[3], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[3])])
         
-        self.up4_3 = Upsample(int(dim*2**3)) ## From Level 4 to Level 3
+        self.up4_3 = Upsample(int(dim*2**3)) 
 
         self.reduce_chan_level3 = nn.Conv2d(int(dim*2**3), int(dim*2**2), kernel_size=1, bias=bias)
         self.decoder_level3 = nn.Sequential(*[TransformerBlock(dim=int(dim*2**2), num_heads=heads[2], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[2])])
 
-        self.up3_2 = Upsample(int(dim*2**2)) ## From Level 3 to Level 2
+        self.up3_2 = Upsample(int(dim*2**2)) 
         self.reduce_chan_level2 = nn.Conv2d(int(dim*2**2), int(dim*2**1), kernel_size=1, bias=bias)
         self.decoder_level2 = nn.Sequential(*[TransformerBlock_mask(dim=int(dim*2**1), num_heads=heads[1], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[1])])
         
-        self.up2_1 = Upsample(int(dim*2**1))  ## From Level 2 to Level 1  (NO 1x1 conv to reduce channels)
+        self.up2_1 = Upsample(int(dim*2**1))  
 
         self.decoder_level1 = nn.Sequential(*[TransformerBlock_mask(dim=int(dim*2**1), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_blocks[0])])
         
         self.refinement = nn.Sequential(*[TransformerBlock_mask(dim=int(dim*2**1), num_heads=heads[0], ffn_expansion_factor=ffn_expansion_factor, bias=bias, LayerNorm_type=LayerNorm_type,win_size=win_size) for i in range(num_refinement_blocks)])
-        
-        #### For Dual-Pixel Defocus Deblurring Task ####
+
         self.dual_pixel_task = dual_pixel_task
         if self.dual_pixel_task:
             self.skip_conv = nn.Conv2d(dim, int(dim*2**1), kernel_size=1, bias=bias)
@@ -536,8 +527,8 @@ class RestormerUfor_mask(nn.Module):
         output_de3=self.gate_extract[0](out_dec_level3) 
         mask_level3=torch.sigmoid(output_de3)
         gate_xs.append(mask_level3)  
-        mask_level2= F.interpolate(mask_level3, scale_factor=2) # use the decoder_level3's feature and upscale the mask
-        #gate_x = mask_level2.clamp_min(0.5)
+        mask_level2= F.interpolate(mask_level3, scale_factor=2) 
+
 
         inp_dec_level2 = self.up3_2(out_dec_level3)
         inp_dec_level2 = torch.cat([inp_dec_level2, out_enc_level2], 1)
@@ -548,7 +539,6 @@ class RestormerUfor_mask(nn.Module):
         mask_level2=torch.sigmoid(output_de2)
         gate_xs.append(mask_level2)
         mask_level1 = F.interpolate(mask_level2, scale_factor=2)
-        #gate_x = gate_x.clamp_min(0.5)
         
         inp_dec_level1 = self.up2_1(out_dec_level2)
         inp_dec_level1 = torch.cat([inp_dec_level1, out_enc_level1], 1)
@@ -556,15 +546,12 @@ class RestormerUfor_mask(nn.Module):
 
         output_de0=self.gate_extract[2](out_dec_level1)
         mask_level1 = torch.sigmoid(output_de0)
-        #gate_x = gate_x.clamp_min(0.5)
+
         gate_xs.append(mask_level1)
 
         out_dec_level1 = self.refinement(torch.concat((mask_level1,out_dec_level1),dim=1))[:,1:,:,:] 
         output_de4=self.output(out_dec_level1)
         
-        #gate_x = gate_x.clamp_min(0.5)
-
-        #outputs=output_de4[:, 1:] * gate_x + inp_img
         outputs=output_de4 + inp_img
 
         return outputs,gate_xs
