@@ -1,10 +1,10 @@
-# RGTN
+# Region Guided Transformer for Single Image Raindrop Removal(RGTN)
 
-Code for the paper [Region Guided Transformer for Single Image Raindrop Removal]
+Code for the paper [Region Guided Transformer for Single Image Raindrop Removal].
 
 ### About this repo:
 
-This repo hosts the implementation code for the paper "RGTN". 
+This repo hosts the implementation code for our RGTN framework. 
 
 ## Introduction
 
@@ -30,10 +30,9 @@ cd RGTN
 conda env create -f environment.yml
 conda activate RGTN
 ```
-- Quick start：
+- Quick start(modifiy your own path in Options/basic.yml)：
 ```bash
 python train.py
-%modifiy your path in Options/basic.yml
 ```
 
 ## Datasets:
@@ -50,6 +49,13 @@ RGTN is trained on Raindrop datasets and Snow100K
 
 ### Citation:
 
-```
-
-```
+<pre><code>
+@inproceedings{cheng2023region,
+  title={Region Guided Transformer for Single Image Raindrop Removal},
+  author={Cheng, Pengfei and Huang, Peiliang and Xu, Chenchu and Han, Longfei},
+  booktitle={2023 7th Asian Conference on Artificial Intelligence Technology (ACAIT)},
+  pages={964--972},
+  year={2023},
+  organization={IEEE}
+}
+</code></pre>
